@@ -1,0 +1,1390 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>multi_dict — веб-клиент диктофонов</title>
+<style>
+  :root{
+    --bg:#14171c; --panel:#1c2027; --panel2:#232833; --line:#2e3540;
+    --txt:#e6e9ee; --dim:#8b95a3; --accent:#4a9eff; --ok:#3fb950; --warn:#d29922; --err:#f85149;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font:14px/1.5 system-ui,Segoe UI,Roboto,sans-serif;background:var(--bg);color:var(--txt)}
+  header{padding:14px 18px;background:var(--panel);border-bottom:1px solid var(--line);display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+  header h1{font-size:16px;margin:0;font-weight:600}
+  .tag{font-size:12px;color:var(--dim);border:1px solid var(--line);border-radius:20px;padding:2px 10px}
+  main{max-width:900px;margin:0 auto;padding:16px}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:16px;margin-bottom:16px}
+  button{font:inherit;background:var(--accent);color:#fff;border:0;border-radius:7px;padding:9px 16px;cursor:pointer}
+  button.sec{background:var(--panel2);color:var(--txt);border:1px solid var(--line)}
+  button.danger{background:var(--panel2);color:var(--err);border:1px solid #5a2a2a}
+  button.icon{padding:7px 10px;font-size:15px;line-height:1}
+  .set-row{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 0;border-bottom:1px solid var(--line);flex-wrap:wrap}
+  .set-row:last-child{border-bottom:0}
+  .set-lbl{font-size:13px}
+  .set-note{font-size:11px;color:var(--dim)}
+  .set-ctl{display:flex;gap:4px}
+  .set-ctl button{padding:5px 11px;font-size:13px}
+  .set-ctl button.on{background:var(--accent);color:#fff;border-color:var(--accent)}
+  button:disabled{opacity:.4;cursor:not-allowed}
+  button:active{transform:translateY(1px)}
+  .row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+  .kv{display:grid;grid-template-columns:auto 1fr;gap:4px 16px;font-size:13px}
+  .kv b{color:var(--dim);font-weight:500}
+  table{width:100%;border-collapse:collapse;font-size:13px}
+  th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line)}
+  th{color:var(--dim);font-weight:500}
+  th.sortable{cursor:pointer;user-select:none;white-space:nowrap}
+  th.sortable:hover{color:var(--txt)}
+  th .sarr{font-size:11px;opacity:.9}
+  tr:hover td{background:var(--panel2)}
+  .muted{color:var(--dim)}
+  .pill{font-size:11px;padding:1px 8px;border-radius:20px;border:1px solid var(--line)}
+  .pill.doway{color:#c98bff;border-color:#5a3d78}
+  .pill.airec{color:#4a9eff;border-color:#2d5580}
+  /* вкладки подключённых устройств */
+  .dtab{background:var(--panel2);color:var(--dim);border:1px solid var(--line);border-radius:20px;
+        padding:6px 10px 6px 14px;font-size:13px;display:inline-flex;align-items:center;gap:8px}
+  .dtab.active{color:var(--txt);border-color:var(--accent);box-shadow:inset 0 0 0 1px var(--accent)}
+  .dtab.active.doway{border-color:#7a4fb0;box-shadow:inset 0 0 0 1px #7a4fb0}
+  .dtab .x{color:var(--dim);border-radius:50%;width:18px;height:18px;line-height:16px;text-align:center;font-size:15px}
+  .dtab .x:hover{color:var(--err);background:#3a2323}
+  #log{font:12px/1.45 ui-monospace,Menlo,Consolas,monospace;background:#0e1116;border:1px solid var(--line);border-radius:8px;padding:10px;height:220px;overflow:auto;white-space:pre-wrap;word-break:break-all}
+  .log-tx{color:#7ee787}.log-rx{color:#79c0ff}.log-sys{color:var(--dim)}.log-err{color:var(--err)}
+  .bar{height:6px;background:var(--panel2);border-radius:4px;overflow:hidden;margin-top:6px}
+  .bar>i{display:block;height:100%;background:var(--accent);width:0}
+  .membar{height:12px;background:var(--panel2);border-radius:6px;overflow:hidden}
+  .membar>i{display:block;height:100%;width:0;transition:width .3s}
+  .hint{font-size:12px;color:var(--warn);background:#2a2413;border:1px solid #4a3d18;border-radius:8px;padding:10px;margin-bottom:16px}
+  a.dl{color:var(--accent);text-decoration:none}
+  h2{font-size:14px;margin:0 0 12px}
+</style>
+</head>
+<body>
+<header>
+  <h1>🎙️ multi_dict</h1>
+  <div id="deviceTabs" class="row" style="gap:6px"></div>
+  <button id="btnAddTop" style="margin-left:auto">＋ Устройство</button>
+</header>
+
+<main>
+  <div class="hint" id="hint" style="display:none"></div>
+
+  <div class="card" id="infoCard" style="display:none">
+    <h2>Устройство <span id="devPill" class="pill"></span></h2>
+    <div class="kv" id="devInfo"></div>
+    <div id="memBar" style="margin-top:14px"></div>
+  </div>
+
+  <div class="card" id="filesCard" style="display:none">
+    <div class="row" style="justify-content:space-between">
+      <h2 style="margin:0">Записи <span id="fileCount" class="muted" style="font-weight:400;font-size:12px"></span></h2>
+      <button id="btnList" class="sec">Обновить список</button>
+    </div>
+    <table id="filesTbl"><thead><tr>
+      <th data-sort="date" class="sortable">Имя / дата <span class="sarr"></span></th>
+      <th data-sort="size" class="sortable">Размер <span class="sarr"></span></th>
+      <th data-sort="dur"  class="sortable">Длительность <span class="sarr"></span></th>
+      <th>Формат</th><th></th>
+    </tr></thead><tbody></tbody></table>
+    <div id="dlProgress" style="display:none;margin-top:12px">
+      <div class="row" style="justify-content:flex-end"><span id="dlBytes" class="muted"></span></div>
+      <div class="bar"><i id="dlBar"></i></div>
+    </div>
+    <audio id="player" controls style="display:none;width:100%;margin-top:12px"></audio>
+  </div>
+
+  <div class="card" id="recCard" style="display:none">
+    <h2 style="margin:0 0 12px">Управление записью</h2>
+    <div class="row" id="recBtns"></div>
+  </div>
+
+  <div class="card" id="settingsCard" style="display:none">
+    <h2 style="margin:0 0 12px">Настройки устройства</h2>
+    <div id="settingsBody"></div>
+  </div>
+
+  <div class="card" id="logCard">
+    <div class="row" style="justify-content:space-between;margin-bottom:8px">
+      <h2 style="margin:0">Журнал обмена</h2>
+      <div class="row" style="gap:6px">
+        <button class="sec icon" id="btnCopyLog" title="Копировать журнал">⧉</button>
+        <button class="sec" id="btnClearLog">Очистить</button>
+      </div>
+    </div>
+    <div id="log"></div>
+  </div>
+</main>
+
+<script>
+"use strict";
+
+// ============ Утилиты ============
+const $ = s => document.querySelector(s);
+const hex = a => [...a].map(b => b.toString(16).padStart(2,'0')).join(' ');
+const enc = new TextEncoder(), dec = new TextDecoder('latin1');
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+// текущее время как метка ГГГГММДДЧЧММСС (для синхронизации часов диктофона)
+function nowStamp(){
+  const d=new Date(), p=n=>String(n).padStart(2,'0');
+  return `${d.getFullYear()}${p(d.getMonth()+1)}${p(d.getDate())}${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}`;
+}
+// 14-байтовое поле имени для команд (скачать/удалить): берём ДОСЛОВНЫЕ байты из
+// списка (nameBytes) — имя может быть не-ASCII; UTF-8-перекодировка сломала бы байты.
+// Запасной путь (нет nameBytes) — UTF-8. Всегда ровно 14 байт, добито нулями.
+function nameField(file){
+  const b = file.nameBytes ? Array.from(file.nameBytes) : Array.from(enc.encode(file.name));
+  const n = b.slice(0,14); while(n.length<14) n.push(0x00); return n;
+}
+
+function log(kind, msg){
+  const el = $('#log'); const t = new Date().toISOString().substr(11,12);
+  const span = document.createElement('div');
+  span.className = 'log-'+kind;
+  span.textContent = `[${t}] ${msg}`;
+  el.appendChild(span); el.scrollTop = el.scrollHeight;
+}
+// статус операции скачивания/воспроизведения — только в журнал (в UI остаётся полоса прогресса)
+function dlStatus(msg){ log('sys', msg); }
+
+// ============ CRC16/ARC (для DOWAY) ============
+function crc16arc(bytes){
+  let crc = 0;
+  for(const b of bytes){
+    crc ^= b;
+    for(let i=0;i<8;i++) crc = (crc & 1) ? ((crc>>>1) ^ 0xA001) : (crc>>>1);
+  }
+  return crc & 0xFFFF;
+}
+
+// ============ Формат объёма памяти: >500 МБ показываем в ГБ ============
+function fmtMem(mb){
+  return mb > 500 ? (mb/1024).toFixed(1).replace('.',',')+' ГБ' : mb+' МБ';
+}
+
+// ============ Оценка размера записи: значение из списка × 32.8 ≈ байты ============
+function fmtFileSize(listVal){
+  if(listVal==null) return '—';
+  const bytes = listVal * 32.8;
+  if(bytes >= 1048576) return '~'+(bytes/1048576).toFixed(2).replace('.',',')+' МБ';
+  return '~'+(bytes/1024).toFixed(0)+' КБ';
+}
+// форматирование ТОЧНОГО размера в байтах (DOWAY отдаёт реальные байты)
+function fmtBytes(bytes){
+  if(bytes==null) return '—';
+  if(bytes >= 1048576) return (bytes/1048576).toFixed(2).replace('.',',')+' МБ';
+  if(bytes >= 1024)    return (bytes/1024).toFixed(0)+' КБ';
+  return bytes+' Б';
+}
+// размер записи для показа: DOWAY — точные байты; AIREC — оценка (значение×32.8)
+function fmtSizeFor(drv, size){
+  return drv.id==='doway' ? fmtBytes(size) : fmtFileSize(size);
+}
+// ожидаемый размер потока в байтах (для полосы прогресса)
+function estBytes(drv, size){ return size==null ? 0 : (drv.id==='doway' ? size : size*32.8); }
+
+// ============ Оценка длительности записи ============
+// AIREC: реальные байты ≈ size×32.8; кадр 82 байта = 20 мс → секунды = байты/82×0.02.
+// DOWAY: MP3 32 кбит/с (кадр FF F3 …, подтверждено) → секунды = байты/4000.
+function estDurationSec(f){
+  if(f.size==null || !(device&&device.drv)) return null;
+  if(device.drv.id==='airec') return (f.size*32.8/82)*0.02;
+  if(device.drv.id==='doway') return f.size/4000;
+  return null;
+}
+function fmtDuration(sec){
+  if(sec==null) return '—';
+  sec=Math.round(sec);
+  const m=Math.floor(sec/60), s=sec%60;
+  return m ? `${m}:${String(s).padStart(2,'0')}` : `${s} с`;
+}
+
+// ============ Разбор имени-метки времени ГГГГММДДЧЧММСС ============
+function prettyName(name){
+  const m = /^(\d{4})(\d{2})(\d{2})(\d{2})(\d{2})(\d{2})$/.exec(name);
+  return m ? `${m[3]}.${m[2]}.${m[1]} ${m[4]}:${m[5]}:${m[6]}` : name;
+}
+
+// ============ OpusHead (описание для WebCodecs AudioDecoder) ============
+function makeOpusHead(channels, rate){
+  const h=new Uint8Array(19);
+  h.set([0x4f,0x70,0x75,0x73,0x48,0x65,0x61,0x64],0); // "OpusHead"
+  h[8]=1;            // версия
+  h[9]=channels;     // каналов
+  h[10]=0; h[11]=0;  // pre-skip
+  h[12]=rate&0xff; h[13]=(rate>>8)&0xff; h[14]=(rate>>16)&0xff; h[15]=(rate>>24)&0xff;
+  h[16]=0; h[17]=0;  // output gain
+  h[18]=0;           // channel mapping family 0
+  return h;
+}
+
+// ============ Декод фирменного формата AIREC → PCM через WebCodecs ============
+// Формат подтверждён сверкой с эталонным WAV устройства (корреляция 0.90–0.95):
+//   • файл = поток записей ФИКСИРОВАННОЙ длины 82 байта;
+//   • каждая запись = sync `5B 50` (2 байта) + Opus-пакет (80 байт);
+//   • TOC-байт Opus (позиция 2) = 0x48/0x4B = config 9 = SILK WB, 20мс, 320 сэмплов;
+//   • Opus 16 кГц моно, декодируется ПОСЛЕДОВАТЕЛЬНО (кодек предсказательный —
+//     важен порядок и общее состояние декодера, что WebCodecs и обеспечивает).
+// Небольшая задержка ~96 сэмплов (латентность декодера Opus) на слух незаметна.
+async function decodeAirecToPcm(blob, opts={}){
+  if(!('AudioDecoder' in window)) throw new Error('WebCodecs (AudioDecoder) не поддерживается этим браузером');
+  const REC = 82;                         // длина записи в байтах
+  const frameUs = opts.frameUs ?? 20000;  // длительность кадра (мкс): 20мс
+  const data=new Uint8Array(await blob.arrayBuffer());
+  const packets=[];
+  for(let i=0;i+REC<=data.length;){
+    if(data[i]===0x5b && data[i+1]===0x50){        // sync `[P`
+      packets.push(data.slice(i+2, i+REC)); i+=REC; // 80-байтовый Opus-пакет
+    } else i++;                                     // ресинхронизация при сбое выравнивания
+  }
+  log('sys',`[декод] записей 5B50: ${packets.length} (×20мс = ${(packets.length*0.02).toFixed(1)}с)`);
+  const pcm=[]; let okFrames=0, errFrames=0, outRate=16000;
+  const dec=new AudioDecoder({
+    output:(ad)=>{ const n=ad.numberOfFrames; outRate=ad.sampleRate||outRate; const b=new Float32Array(n);
+      try{ ad.copyTo(b,{planeIndex:0,format:'f32-planar'}); }catch(e){ try{ad.copyTo(b,{planeIndex:0});}catch(_){}}
+      pcm.push(b); okFrames++; ad.close(); },
+    error:(e)=>{ errFrames++; }
+  });
+  dec.configure({codec:'opus', sampleRate:16000, numberOfChannels:1, description:makeOpusHead(1,16000)});
+  let ts=0;
+  for(const p of packets){
+    try{ dec.decode(new EncodedAudioChunk({type:'key',timestamp:ts,data:p})); }catch(e){ errFrames++; }
+    ts+=frameUs;
+  }
+  try{ await dec.flush(); }catch(e){ log('sys','[декод] flush: '+e.message); }
+  dec.close();
+  log('sys',`[декод] успешных кадров: ${okFrames}, ошибок: ${errFrames}, частота ${outRate} Гц`);
+  if(!pcm.length) throw new Error('декодер не выдал звук (проверьте поддержку Opus в WebCodecs)');
+  const total=pcm.reduce((s,a)=>s+a.length,0);
+  const out=new Float32Array(total); let o=0; for(const a of pcm){ out.set(a,o); o+=a.length; }
+  return {pcm:out, rate:outRate, seconds:total/outRate};
+}
+
+// ============ PCM (Float32) → WAV-блоб ============
+function pcmToWav(pcm, rate){
+  const n=pcm.length; const buf=new ArrayBuffer(44+n*2); const v=new DataView(buf);
+  const wr=(o,s)=>{for(let i=0;i<s.length;i++)v.setUint8(o+i,s.charCodeAt(i));};
+  wr(0,'RIFF'); v.setUint32(4,36+n*2,true); wr(8,'WAVE'); wr(12,'fmt ');
+  v.setUint32(16,16,true); v.setUint16(20,1,true); v.setUint16(22,1,true);
+  v.setUint32(24,rate,true); v.setUint32(28,rate*2,true); v.setUint16(32,2,true); v.setUint16(34,16,true);
+  wr(36,'data'); v.setUint32(40,n*2,true);
+  let o=44; for(let i=0;i<n;i++){ const s=Math.max(-1,Math.min(1,pcm[i])); v.setInt16(o, s<0?s*0x8000:s*0x7fff, true); o+=2; }
+  return new Blob([buf],{type:'audio/wav'});
+}
+
+// ============ Живое прослушивание: звук течёт во время записи ============
+// AIREC — поток Opus (82-байтовые записи 5B50) на 0x0003; DOWAY — поток MP3 (16 кГц) на 0x0027.
+// Декодируем на лету (WebCodecs) и играем через Web Audio с джиттер-буфером.
+let liveMon = null;
+// Длина одного кадра MPEG-audio Layer III в байтах по его 4-байтовому заголовку (0 — не заголовок).
+function mp3FrameLen(b, i){
+  if(i+4 > b.length) return 0;
+  if(b[i]!==0xFF || (b[i+1]&0xE0)!==0xE0) return 0;
+  const ver=(b[i+1]>>3)&3, layer=(b[i+1]>>1)&3;
+  if(layer!==1) return 0;                          // принимаем только Layer III
+  const br=(b[i+2]>>4)&0xF, sr=(b[i+2]>>2)&3, pad=(b[i+2]>>1)&1;
+  if(br===0||br===0xF||sr===3) return 0;           // «свободный»/недопустимый битрейт или частота
+  const mpeg1 = ver===3;
+  const brV1=[0,32,40,48,56,64,80,96,112,128,160,192,224,256,320,0];
+  const brV2=[0,8,16,24,32,40,48,56,64,80,96,112,128,144,160,0];
+  const srTab = mpeg1 ? [44100,48000,32000] : (ver===2 ? [22050,24000,16000] : [11025,12000,8000]);
+  const bitrate=(mpeg1?brV1:brV2)[br]*1000, rate=srTab[sr], samples=mpeg1?1152:576;
+  const len=((samples/8*bitrate/rate)|0)+pad;
+  return len>0 ? len : 0;
+}
+function startLive(dev){
+  stopLive();
+  if(!('AudioDecoder' in window)){ alert('Живой звук: нужен браузер с WebCodecs (Chrome/Edge).'); return; }
+  const AC = window.AudioContext||window.webkitAudioContext;
+  const ac = new AC();
+  let nextTime=0, buf=new Uint8Array(0), ts=0;
+  const dec = new AudioDecoder({
+    output: ad => {
+      const n=ad.numberOfFrames, rate=ad.sampleRate;
+      const pcm=new Float32Array(n);
+      try{ ad.copyTo(pcm,{planeIndex:0,format:'f32-planar'}); }catch(e){ try{ad.copyTo(pcm,{planeIndex:0});}catch(_){} }
+      ad.close();
+      const ab=ac.createBuffer(1,n,rate); ab.copyToChannel(pcm,0);
+      const src=ac.createBufferSource(); src.buffer=ab; src.connect(ac.destination);
+      const now=ac.currentTime;
+      if(nextTime < now+0.05) nextTime = now+0.15;   // старт с буфером / ресинк при отставании
+      src.start(nextTime); nextTime += ab.duration;
+    },
+    error: e => log('sys','эфир: '+e.message)
+  });
+  if(dev.drv.id==='doway'){
+    // DOWAY: непрерывный MP3 на 0x0027 (b0b3). Копим байты, режем полные кадры по заголовку.
+    dec.configure({codec:'mp3', sampleRate:16000, numberOfChannels:1});
+    dev.onData = bytes => {
+      const m=new Uint8Array(buf.length+bytes.length); m.set(buf,0); m.set(bytes,buf.length); buf=m;
+      let i=0;
+      while(i < buf.length-4){
+        const L=mp3FrameLen(buf,i);
+        if(L && i+L<=buf.length){ try{ dec.decode(new EncodedAudioChunk({type:'key',timestamp:ts,data:buf.slice(i,i+L)})); ts+=36000; }catch(e){} i+=L; }
+        else if(L) break;                 // заголовок есть, но кадр ещё не дошёл целиком — ждём хвост
+        else i++;                          // не синхрозаголовок — ищем следующий
+      }
+      buf = buf.slice(i);
+    };
+    log('sys','эфир включён — звук записи играет в реальном времени (MP3 0x0027)');
+  } else {
+    // AIREC: 82-байтовые записи — sync 5B50 + 80 байт Opus-пакета.
+    dec.configure({codec:'opus', sampleRate:16000, numberOfChannels:1, description:makeOpusHead(1,16000)});
+    dev.onData = bytes => {
+      const m=new Uint8Array(buf.length+bytes.length); m.set(buf,0); m.set(bytes,buf.length); buf=m;
+      let i=0;
+      while(buf.length-i >= 82){
+        if(buf[i]===0x5b && buf[i+1]===0x50){
+          try{ dec.decode(new EncodedAudioChunk({type:'key',timestamp:ts,data:buf.slice(i+2,i+82)})); ts+=20000; }catch(e){}
+          i+=82;
+        } else i++;
+      }
+      buf = buf.slice(i);
+    };
+    log('sys','эфир включён — звук записи играет в реальном времени (Opus 0x0003)');
+  }
+  ac.resume && ac.resume();
+  liveMon = { dev, stop(){ try{dev.onData=null;}catch(e){} try{dec.close();}catch(e){} try{ac.close();}catch(e){} } };
+}
+function stopLive(){ if(liveMon){ liveMon.stop(); liveMon=null; } }
+let liveBtnEl=null;
+function updateLiveBtn(){ if(liveBtnEl) liveBtnEl.textContent = liveMon ? '🎧 Остановить эфир' : '🎧 Слушать эфир'; }
+function toggleLive(){
+  if(liveMon){ stopLive(); log('sys','эфир выключен'); }
+  else if(device && device.drv.rec && device.drv.rec.live){ startLive(device); }
+  updateLiveBtn();
+}
+
+// ============ Определение формата по сигнатуре первых байт ============
+// Возвращает {ext, label}. fallback — что использовать, если сигнатура не опознана.
+function sniffFormat(u8, fallbackExt, fallbackLabel){
+  const b = u8;
+  if(b.length>=4){
+    if(b[0]==0x52&&b[1]==0x49&&b[2]==0x46&&b[3]==0x46) return {ext:'wav', label:'WAV'};        // RIFF
+    if(b[0]==0x4F&&b[1]==0x67&&b[2]==0x67&&b[3]==0x53) return {ext:'ogg', label:'Ogg/Opus'};   // OggS
+    if(b[0]==0x49&&b[1]==0x44&&b[2]==0x33)             return {ext:'mp3', label:'MP3'};        // ID3
+    if(b[0]==0xFF&&(b[1]&0xE0)==0xE0)                  return {ext:'mp3', label:'MP3'};        // MPEG-кадр
+    if(b[0]==0x5B&&b[1]==0x50&&(b[2]==0x4B||b[2]==0x48)) return {ext:'opus.raw', label:'Opus 16 кГц (кадры 5B50)'}; // фирменный AIREC: sync 5B50 + Opus TOC 0x4B/0x48
+  }
+  return {ext:fallbackExt, label:fallbackLabel};
+}
+
+// ============ Драйвер DOWAY (ATS3085) ============
+const DOWAY = {
+  id:'doway', label:'DOWAY',
+  svc:'0000b0b0-0000-1000-8000-00805f9b34fb',
+  chCmd:'0000b0b1-0000-1000-8000-00805f9b34fb',   // write no-resp (0x0022)
+  chResp:'0000b0b2-0000-1000-8000-00805f9b34fb',  // notify        (0x0024)
+  chData:'0000b0b3-0000-1000-8000-00805f9b34fb',  // notify        (0x0027) — ЖИВОЙ поток MP3 при записи
+  chBulk:'0000b0b4-0000-1000-8000-00805f9b34fb',  // notify        (0x002a) — ПОТОК ФАЙЛА (MP3)
+  audioExt:'mp3', fmtLabel:'MP3',   // поток по BLE — реальный MP3 16 кГц (кадр FF F3 …)
+  frame(cmd, payload=[]){
+    const body = [0xA0,0x0A,0x01,cmd,payload.length,...payload];
+    const c = crc16arc(body);
+    return new Uint8Array([...body,(c>>8)&0xFF,c&0xFF]);
+  },
+  parse(buf){ // возвращает {cmd,len,payload}
+    if(buf.length<5 || buf[0]!==0xA0 || buf[1]!==0x0A) return null;
+    const cmd=buf[3], len=buf[4];
+    return {cmd, len, payload:buf.slice(5,5+len)};
+  },
+  // рукопожатие: 0x02 -> код, echo кодом в 0x03 (17 байт), ждём 0x03=00
+  async handshake(dev){
+    const r = await dev.request(this.frame(0x02), 0x02);
+    const code = Array.from(r.payload).slice(0,16);
+    while(code.length<17) code.push(0x00);
+    // во время рукопожатия устройство БЕЗ запроса шлёт 0x1f = имя+модель — ловим его
+    const prev = dev.onResp;
+    dev.onResp = f => { if(f.cmd===0x1f) dev.nameInfo = dec.decode(f.payload).replace(/\0+$/,''); };
+    await dev.request(this.frame(0x03, code), 0x03);
+    dev.onResp = prev;
+  },
+  async info(dev){
+    const out={};
+    const s = await dev.request(this.frame(0x01), 0x01);
+    const serial = dec.decode(s.payload).replace(/\0+$/,'');
+    out['Серийный номер'] = serial;
+    // Модель из 0x1f («Doway_A171K9THA171» = модель + id): отрезаем хвост-id (совпадает с началом серийника)
+    if(dev.nameInfo){
+      let model = dev.nameInfo;
+      for(let n=serial.length; n>=4; n--){
+        const idx = model.indexOf(serial.slice(0,n));
+        if(idx>0){ model = model.slice(0, idx); break; }
+      }
+      out['Модель'] = model || dev.nameInfo;
+    }
+    try{
+      // ответ 0x05 (52 байта): [0..3] всего, [4..7] свободно (МиБ, старшим вперёд); [9] заряд %
+      const st = await dev.request(this.frame(0x05), 0x05, 2500);
+      const p = st.payload;
+      const be32=i=> p[i]*16777216 + (p[i+1]<<16) + (p[i+2]<<8) + p[i+3];
+      const total=be32(0), free=be32(4), batt=p[9];
+      if(batt!=null && batt<=100) out['Батарея'] = batt + ' %';
+      if(total>0) out.__mem = {total, free};   // полоса памяти рисуется в renderInfo
+    }catch(e){ log('sys','DOWAY 0x05 (память/батарея): '+e.message); }
+    return out;
+  },
+  // список: 0x0A -> записи по 20 байт; терминатор — кадр 0x0A с payload [0x02]
+  async list(dev){
+    const files=[];
+    dev.onResp = f => {
+      if(f.cmd!==0x0A) return;
+      if(f.len===1 && f.payload[0]===0x02){ dev.listDone && dev.listDone(); return; }
+      if(f.len>=15){
+        const p = f.payload;
+        const name = dec.decode(p.slice(1,15)).replace(/\0+$/,'');
+        // размер файла — РЕАЛЬНЫЕ байты: 4 байта старшим вперёд, позиции 15..18
+        // (сверено с ответом 0x0b при скачивании; прежнее LE-декодирование давало мусор)
+        const size = p[15]*16777216 + (p[16]<<16) + (p[17]<<8) + p[18];
+        const type = p[19];
+        // не фильтруем по цифрам — иначе прячутся переименованные записи.
+        // nameBytes — сырые 14 байт имени для дословной отправки в командах.
+        if(name) files.push({name,size,type,nameBytes:f.payload.slice(1,15)});
+      }
+    };
+    await dev.writeCmd(this.frame(0x0A));
+    await new Promise(res => { dev.listDone = res; setTimeout(res,2500); });
+    dev.onResp=null; dev.listDone=null;
+    return files;
+  },
+  // Скачивание (ПОДТВЕРЖДЕНО перехватом фоновой синхронизации):
+  //   0x0b + имя(14) + 4 нуля → ответ 0x0b + размер, затем поток MP3 на b0b4 (0x002a),
+  //   конец — кадр 0x0b с нагрузкой 02. (0x0D — это удаление, его тут НЕ шлём.)
+  async download(dev, file, onProgress){
+    const sel = [...nameField(file), 0,0,0,0];
+    return dev.bulkDownload(
+      this.frame(0x0b, sel),
+      f => f.cmd===0x0b && f.len===1 && f.payload[0]===0x02,   // терминатор передачи
+      onProgress,
+      f => (f.cmd===0x0b && f.len===5) ? ((f.payload[1]<<24)|(f.payload[2]<<16)|(f.payload[3]<<8)|f.payload[4]) : 0);  // размер из ответа
+  },
+  // удаление ПОДТВЕРЖДЕНО перехватом: 0x0d + имя(14) → ответ 0x0d 00 (4 удаления подряд)
+  deleteCmd: 0x0d,
+  async delete(dev, file){
+    await dev.request(this.frame(this.deleteCmd, nameField(file)), this.deleteCmd);
+  },
+  // Настройки — подтверждены перехватом (меняли каждую опцию по очереди и читали 0x05).
+  // byte — индекс в ответе 0x05 (52 байта), откуда берём текущее значение при подключении.
+  settings: [
+    {cmd:0x1a, byte:42, label:'Подсветка экрана', type:'toggle', note:''},
+    {cmd:0x13, byte:14, label:'Поддержка USB',    type:'toggle', note:''},
+    {cmd:0x17, byte:39, label:'Шумоподавление',   type:'select', note:'', options:[
+      {val:0x00,label:'Выкл'},{val:0x05,label:'Низкая'},{val:0x09,label:'Средняя'},{val:0x0f,label:'Высокая'}]},
+    {cmd:0x16, byte:41, label:'Длительность записи', type:'select', note:'', options:[
+      {val:0x00,label:'30 мин'},{val:0x01,label:'1 час'},{val:0x02,label:'2 часа'},{val:0x03,label:'3 часа'}]},
+  ],
+  settingsCmd: 0x05,   // чтение текущих настроек (ответ 0x05, 52 байта)
+  // Управление записью (подтверждено): старт 0x06→имя; пауза 0x08; продолжить 0x09; стоп 0x07.
+  // live:true — во время записи устройство шлёт живой MP3 на 0x0027 (перехват att_trace: старт 0x06 → поток).
+  rec: { start:0x06, pauseCmd:0x08, resumeCmd:0x09, stop:0x07, startResp:0x06, live:true },
+  // ФОРМАТИРОВАНИЕ (подтверждено перехватом): 0x10 без нагрузки → ответ 0x10 00.
+  // ВНИМАНИЕ: стирает все записи. Операция долгая (~4.5 с в перехвате) — большой таймаут.
+  async format(dev){ await dev.request(this.frame(0x10), 0x10, 20000); },
+  // Синхронизация часов: 0x04 + 6 байт [ГГ-2000, ММ, ДД, ЧЧ, мм, сс] (подтверждено перехватом).
+  async syncClock(dev){
+    const d=new Date();
+    const pl=[d.getFullYear()-2000, d.getMonth()+1, d.getDate(), d.getHours(), d.getMinutes(), d.getSeconds()];
+    await dev.request(this.frame(0x04, pl), 0x04, 3000);
+    log('sys','часы DOWAY выставлены: '+nowStamp());
+  },
+};
+
+// ============ Драйвер AIREC (ATS2837) ============
+const AIREC = {
+  id:'airec', label:'AIREC',
+  svc:'0011200a-2233-4455-6677-8899dfdedddc',
+  chData:'0011201a-2233-4455-6677-8899dfdedddc', // notify        (0x0003)
+  chCmd:'0011202a-2233-4455-6677-8899dfdedddc',  // write no-resp (0x0006)
+  chResp:'0011203a-2233-4455-6677-8899dfdedddc', // notify        (0x0008)
+  chBulk:'0011204a-2233-4455-6677-8899dfdedddc', // notify        (0x000b) — ПОТОК СКАЧИВАНИЯ
+  audioExt:'opus.raw', fmtLabel:'Opus (кадрир.)',  // поток по BLE — фирменные кадры [PKA
+  frame(cmd, payload=[]){ // запрос: 55 AA LEN CMD ...  (LEN = 1+payload)
+    return new Uint8Array([0x55,0xAA,1+payload.length,cmd,...payload]);
+  },
+  parse(buf){ // ответ: AA 55 LEN CMD ...
+    if(buf.length<4 || buf[0]!==0xAA || buf[1]!==0x55) return null;
+    const len=buf[2], cmd=buf[3];
+    return {cmd, len, payload:buf.slice(4,4+(len-1))};
+  },
+  async handshake(){ /* у AIREC рукопожатия нет */ },
+  // Синхронизация часов: 0x02 + 14 ASCII-байт ГГГГММДДЧЧММСС (подтверждено разбором).
+  async syncClock(dev){
+    const t=nowStamp();
+    await dev.writeCmd(this.frame(0x02, Array.from(enc.encode(t))));
+    log('sys','часы AIREC выставлены: '+t);
+  },
+  // Настройки. cmd — код установки (value в payload). byte — индекс в ответе 0x26,
+  // откуда читаем ТЕКУЩЕЕ значение при подключении.
+  // Сопоставление байтов выведено из перехватов: byte0=усиление и byte8=загрузочная —
+  // подтверждены; байты 1/2/6 (переключатели) — предварительно.
+  settings: [
+    {cmd:0x2a, byte:0, label:'Усиление микрофона', type:'range', min:1, max:5, note:''},
+    {cmd:0x19, byte:1, label:'Шумоподавление',     type:'toggle', note:''},
+    {cmd:0x18, byte:2, label:'Светодиод',           type:'toggle', note:''},
+    {cmd:0x24, byte:6, label:'Поддержка USB',       type:'toggle', note:''},
+    {cmd:0x2e, byte:8, label:'Загрузочная запись',  type:'toggle', note:''},
+    // 0x22 подтверждён порядком действий: сегментация записей (нагрузка 00+VAL), значение в байте 4 ответа 0x26.
+    {cmd:0x22, byte:4, label:'Сегментация записей', type:'select', pre:[0x00],
+     note:'Автоматически резать длинную запись на части', options:[
+      {val:0x1e,label:'30 мин'},{val:0x2d,label:'45 мин'},{val:0x3c,label:'60 мин'}]},
+  ],
+  settingsCmd: 0x26,   // чтение текущих настроек (ответ 0x26, 9 байт)
+  // Управление записью: старт 0x03→имя; пауза/продолжение — ОДИН переключатель 0x10;
+  // стоп 0x04. statusCmd 0x0f — авто-опрос статуса (у DOWAY статуса нет).
+  rec: { start:0x03, pauseCmd:0x10, resumeCmd:0x10, stop:0x04, startResp:0x03, statusCmd:0x0f, live:true },
+  // Подготовка перед списком — последовательность из родного приложения.
+  // Часть команд без ответа (fire-and-forget), поэтому просто шлём с паузами.
+  async prepare(dev){
+    for(const [cmd,pl] of [[0x20,[]],[0x0f,[]],[0x36,[]],[0x26,[]],[0x69,[0x00]]]){
+      try{ await dev.writeCmd(this.frame(cmd, pl)); }catch(e){}
+      await sleep(120);
+    }
+  },
+  async info(dev){
+    const out={};
+    const s = await dev.request(this.frame(0x01), 0x01);
+    out['Серийный номер'] = dec.decode(s.payload).replace(/\0+$/,'');
+    try{
+      const b = await dev.request(this.frame(0x0e), 0x0e);
+      out['Батарея'] = b.payload[0] + ' %';
+    }catch(e){}
+    try{
+      // 0x0b запускает ответы 0x0c (всего) и 0x0d (свободно), 4 байта каждый.
+      // Проверено на живом AIREC: 0x0c=7454, 0x0d=7424 — свободное не может превышать
+      // общий объём, значит 0x0c — это ВСЕГО, 0x0d — СВОБОДНО (прежде метки были перепутаны).
+      let free=null,total=null;
+      dev.onResp = f => {   // значения big-endian в МБ: payload = 00 00 HH LL
+        if(f.cmd===0x0c) total = (f.payload[2]<<8) | f.payload[3];
+        if(f.cmd===0x0d) free  = (f.payload[2]<<8) | f.payload[3];
+      };
+      await dev.writeCmd(this.frame(0x0b));
+      await sleep(500); dev.onResp=null;
+      if(total!=null) out.__mem = {total, free};   // полоса памяти рисуется в renderInfo
+    }catch(e){}
+    try{ // версия прошивки в устройстве (0x12 → ASCII, напр. "1.0.5")
+      const v = await dev.request(this.frame(0x12), 0x12, 2000);
+      const s2 = dec.decode(v.payload).replace(/\0+$/,'').trim();
+      if(s2) out['Прошивка'] = s2;
+    }catch(e){}
+    try{ // ревизия изделия (0x29 → 00 00 'A' '3')
+      const r = await dev.request(this.frame(0x29), 0x29, 2000);
+      const p = r.payload;
+      if(p.length>=4 && p[2] && p[3]) out['Ревизия'] = String.fromCharCode(p[2], p[3]);
+    }catch(e){}
+    return out;
+  },
+  // список: 0x05 -> записи по 18 байт; терминатор — команда 0x06
+  async list(dev){
+    const files=[];
+    dev.onResp = f => {
+      if(f.cmd===0x06){ dev.listDone && dev.listDone(); return; }
+      if(f.cmd===0x05 && f.payload.length>=17){
+        const name = dec.decode(f.payload.slice(0,14)).replace(/\0+$/,'');
+        const size = (f.payload[14]<<16)|(f.payload[15]<<8)|f.payload[16]; // 3 байта, старшим вперёд
+        const type = f.payload[17];
+        // раньше был фильтр /^\d{6,}/ (только автоимена-таймстампы) — он прятал
+        // ПЕРЕИМЕНОВАННЫЕ на устройстве файлы. Принимаем любое непустое имя.
+        // nameBytes — сырые 14 байт имени: для команд шлём их дословно (имя может
+        // быть не-ASCII, а показываем через latin1 — обратное UTF-8-кодирование сломало бы байты).
+        if(name) files.push({name,size,type,nameBytes:f.payload.slice(0,14)});
+      }
+    };
+    await dev.writeCmd(this.frame(0x69,[0x00]));  // «разбудить» выдачу списка
+    await sleep(150);
+    await dev.writeCmd(this.frame(0x05));
+    await new Promise(res => { dev.listDone=res; setTimeout(res,2500); });
+    dev.onResp=null; dev.listDone=null;
+    return files;
+  },
+  // ВНИМАНИЕ: команда скачивания СОХРАНЁННОГО файла не подтверждена перехватом.
+  // В снятом журнале поток шёл при ЖИВОЙ записи, не при выгрузке. Отмечено экспериментально.
+  // Скачивание (подтверждено перехватом): 0x07<имя+0000> -> поток на 0x000b -> 0x09 конец.
+  async download(dev, file, onProgress){
+    return dev.airecDownload(this, nameField(file), onProgress);
+  },
+  // удаление подтверждено перехватом: 0x34[00 01] (режим) -> 0x0A + имя(14) -> ответ 0x0A
+  async delete(dev, file){
+    const name = nameField(file);
+    await dev.writeCmd(this.frame(0x34, [0x00,0x01]));  // войти в режим управления файлами
+    await sleep(150);
+    await dev.request(this.frame(0x0a, name), 0x0a);    // удалить, ждём подтверждение 0x0A
+    await dev.writeCmd(this.frame(0x0b));               // обновить объём памяти
+  }
+};
+
+// ============ Драйвер PLAUD Note Pro (только опознание/паспорт) ============
+// Рабочий BLE-протокол Plaud ЗАШИФРОВАН: обмен RSA-ключами (-----BEGIN PUBLIC KEY-----)
+// и далее полностью шифрованные кадры. Команд/списка/скачивания повторить нельзя без
+// реверса приложения. Но стандартные GATT-сервисы открыты — читаем «паспорт» устройства.
+const PLAUD = {
+  id:'plaud', label:'Plaud Note Pro',
+  svc:'000002fd-3c17-d293-8e48-14fe2e4da212',   // кастомный сервис Plaud — для опознания
+  readonly:true,                                 // рабочий протокол зашифрован
+  frame(){ return new Uint8Array(); },
+  parse(){ return null; },
+  async handshake(){},
+  async info(dev){
+    const out={};
+    const g=dev.bt.gatt;
+    const readStr = async (chU)=>{
+      try{ const s=await g.getPrimaryService('device_information'); const c=await s.getCharacteristic(chU);
+           const v=await c.readValue(); return dec.decode(new Uint8Array(v.buffer)).replace(/\0+$/,'').trim(); }
+      catch(e){ return null; }
+    };
+    const man=await readStr('manufacturer_name_string'); if(man) out['Производитель']=man;
+    const mod=await readStr('model_number_string');      if(mod) out['Модель']=mod;
+    const ser=await readStr('serial_number_string');     if(ser) out['Серийный номер']=ser;
+    const fw =await readStr('firmware_revision_string'); if(fw)  out['Прошивка']=fw;
+    const hw =await readStr('hardware_revision_string'); if(hw)  out['Аппаратная ревизия']=hw;
+    try{ const s=await g.getPrimaryService('battery_service'); const c=await s.getCharacteristic('battery_level');
+         out['Батарея']=(await c.readValue()).getUint8(0)+' %'; }catch(e){}
+    log('sys','Plaud: паспорт прочитан. Рабочий протокол зашифрован (RSA+шифр) — записи недоступны.');
+    return out;
+  },
+  list:null,   // список/скачивание/управление недоступны (зашифровано)
+};
+
+const DRIVERS = [DOWAY, AIREC, PLAUD];
+
+// ============ Обёртка над GATT ============
+class Device {
+  constructor(bt, drv, svc){ this.bt=bt; this.drv=drv; this.svc=svc; this.onResp=null; }
+
+  async open(){
+    // readonly-драйвер (Plaud): командных каналов нет, протокол зашифрован — только паспорт
+    if(this.drv.readonly){ log('sys','подписка не требуется: только чтение паспорта'); return; }
+    this.cmd  = await this.svc.getCharacteristic(this.drv.chCmd);
+    this.resp = await this.svc.getCharacteristic(this.drv.chResp);
+    this.data = await this.svc.getCharacteristic(this.drv.chData);
+    // живой поток при записи (AIREC 0x0003) кормит монитор эфира, если он включён
+    this.onData = null;
+    this.data.addEventListener('characteristicvaluechanged', e=>{
+      if(this.onData) this.onData(new Uint8Array(e.target.value.buffer));
+    });
+    if(this.drv.chBulk){
+      try{
+        this.bulk = await this.svc.getCharacteristic(this.drv.chBulk);
+        // уведомления на 0x000b И на 0x0003 включаем СРАЗУ при подключении.
+        // Устройство отдаёт файл на 0x000b только если подписаны ОБЕ характеристики.
+        await this.bulk.startNotifications();
+        try{ await this.data.startNotifications(); }catch(e){}
+        this.bulk.addEventListener('characteristicvaluechanged', e=>{
+          if(!this._dl) return;
+          const b=new Uint8Array(e.target.value.buffer);
+          this._dl.chunks.push(b); this._dl.total+=b.length; this._dl.last=Date.now();
+          this._dl.onProgress && this._dl.onProgress(this._dl.total, this._dl.declared);   // declared — точный размер из ответа
+        });
+      }catch(e){ log('sys','0x000b: '+e.message); }
+    }
+    // ответы
+    await this.resp.startNotifications();
+    this.resp.addEventListener('characteristicvaluechanged', e=>{
+      const buf = new Uint8Array(e.target.value.buffer);
+      const f = this.drv.parse(buf);
+      // тихий режим: не засоряем журнал ответами на служебные авто-опросы (статус/настройки)
+      const quiet = f && this._await && this._await.quiet && f.cmd===this._await.cmd;
+      if(!quiet) log('rx', '⟵ '+hex(buf));
+      if(f && this.onResp) this.onResp(f);
+      if(f && this._await && f.cmd===this._await.cmd){
+        const w=this._await; this._await=null; w.resolve(f);
+      }
+    });
+    log('sys','подписка на ответы включена');
+  }
+
+  async writeCmd(bytes, quiet){
+    if(!quiet) log('tx','⟶ '+hex(bytes));
+    await this.cmd.writeValueWithoutResponse(bytes);
+  }
+
+  // отправить кадр и дождаться ответа с нужным cmd (quiet — без записи в журнал)
+  request(bytes, expectCmd, timeout=4000, quiet=false){
+    return new Promise(async (resolve,reject)=>{
+      const aw = {cmd:expectCmd, quiet, resolve:null};
+      this._await = aw;
+      // таймаут снимает ТОЛЬКО свой await (иначе гонка с параллельным запросом порвала бы чужой)
+      const to = setTimeout(()=>{ if(this._await===aw) this._await=null; reject(new Error('таймаут ответа 0x'+expectCmd.toString(16))); }, timeout);
+      aw.resolve = f => { clearTimeout(to); resolve(f); };
+      try{ await this.writeCmd(bytes, quiet); }catch(e){ clearTimeout(to); if(this._await===aw) this._await=null; reject(e); }
+    });
+  }
+
+  // AIREC-скачивание (подтверждено перехватом):
+  //   0x07 <имя+0000> -> файл идёт на характеристику 0x000b -> 0x09 = конец.
+  //   0x03/0x22/0x21 НЕ шлём — это запускает запись!
+  async airecDownload(drv, nameBytes, onProgress){
+    if(!this.bulk) throw new Error('нет характеристики потока 0x000b');
+    this._dl = {chunks:[], total:0, last:Date.now(), onProgress};
+    let done=false;
+    const prevResp = this.onResp;
+    this.onResp = f => {
+      // ответ 0x07 = имя(14) + 3 байта размера (старшим вперёд) — точный размер файла
+      if(f.cmd===0x07 && f.payload.length>=17) this._dl.declared=(f.payload[14]<<16)|(f.payload[15]<<8)|f.payload[16];
+      if(f.cmd===0x09){ done=true; log('sys','0x09 — передача завершена'); }
+    };
+    const sel = [...nameBytes, 0,0,0,0];   // 0x07: имя(14) + 4 нуля
+    log('sys','0x07 → приём файла на 0x000b, конец по 0x09');
+    await this.writeCmd(drv.frame(0x07, sel));
+    await new Promise(res=>{
+      const iv=setInterval(()=>{
+        const idle=Date.now()-this._dl.last;
+        if(done && idle>400){ clearInterval(iv); res(); return; }
+        if(this._dl.total===0 && idle>8000){ clearInterval(iv); res(); return; }   // ничего не пошло
+        if(this._dl.total>0 && idle>4000){ clearInterval(iv); res(); return; }     // страховка
+      }, 300);
+      setTimeout(()=>{ clearInterval(iv); res(); }, 600000);
+    });
+    this.onResp = prevResp;
+    const blob = new Blob(this._dl.chunks); this._dl=null;
+    return blob;
+  }
+
+  // Универсальное скачивание через характеристику потока (this.bulk):
+  //   шлём команду, копим поток (кадры идут на this.bulk и попадают в this._dl),
+  //   завершаем по кадру-терминатору (isDone(f)) на канале ответов или по простою.
+  async bulkDownload(cmdBytes, isDone, onProgress, sizeOf){
+    if(!this.bulk) throw new Error('нет характеристики потока');
+    this._dl = {chunks:[], total:0, last:Date.now(), onProgress};
+    let done=false;
+    const prevResp = this.onResp;
+    this.onResp = f => { try{ const sz=sizeOf&&sizeOf(f); if(sz) this._dl.declared=sz; if(isDone(f)){ done=true; } }catch(e){} };
+    await this.writeCmd(cmdBytes);
+    await new Promise(res=>{
+      const iv=setInterval(()=>{
+        const idle=Date.now()-this._dl.last;
+        if(done && idle>400){ clearInterval(iv); res(); return; }
+        if(this._dl.total===0 && idle>8000){ clearInterval(iv); res(); return; }
+        if(this._dl.total>0 && idle>4000){ clearInterval(iv); res(); return; }
+      }, 300);
+      setTimeout(()=>{ clearInterval(iv); res(); }, 600000);
+    });
+    this.onResp = prevResp;
+    const blob = new Blob(this._dl.chunks); this._dl=null;
+    return blob;
+  }
+
+  // скачивание: пишем команду, копим поток с chData, финал по простою
+  async streamDownload(cmdBytes, onProgress, idleMs=1500){
+    const chunks=[]; let total=0; let lastTs=Date.now();
+    const handler = e=>{
+      const buf = new Uint8Array(e.target.value.buffer);
+      chunks.push(buf); total+=buf.length; lastTs=Date.now();
+      onProgress && onProgress(total);
+    };
+    await this.data.startNotifications();
+    this.data.addEventListener('characteristicvaluechanged', handler);
+    await this.writeCmd(cmdBytes);
+    // ждём простоя
+    await new Promise(res=>{
+      const iv=setInterval(()=>{ if(Date.now()-lastTs>idleMs && total>0){ clearInterval(iv); res(); } }, 300);
+      setTimeout(()=>{ clearInterval(iv); res(); }, 120000); // страховка 2 мин
+    });
+    this.data.removeEventListener('characteristicvaluechanged', handler);
+    try{ await this.data.stopNotifications(); }catch(e){}
+    const blob = new Blob(chunks);
+    return blob;
+  }
+}
+
+// ============ Состояние и UI ============
+let devices=[];       // все подключённые устройства (экземпляры Device)
+let device=null;      // активное устройство (на нём работают список/запись/настройки)
+let logView=true;     // true — открыта вкладка «Журнал» (по умолчанию, пока нет устройств)
+
+function checkEnv(){
+  if(!('bluetooth' in navigator)){
+    showHint('Этот браузер не поддерживает Web Bluetooth. Нужен Chrome/Edge на компьютере или Chrome на Android. Safari и любой браузер на iOS не подойдут.');
+    $('#btnAddTop').disabled=true; return;
+  }
+  if(!window.isSecureContext)
+    log('sys','внимание: не защищённый контекст — Web Bluetooth требует https:// или localhost');
+}
+function showHint(t){ const h=$('#hint'); h.textContent='⚠ '+t; h.style.display='block'; }
+
+// ---- Память подключённых устройств: чтобы после перезагрузки страницы (F5)
+//      переподключаться к ним автоматически, без окна выбора ----
+function rememberedIds(){ try{ return JSON.parse(localStorage.getItem('connectedDevices')||'[]'); }catch(e){ return []; } }
+function rememberDevice(id){ const s=new Set(rememberedIds()); s.add(id); localStorage.setItem('connectedDevices', JSON.stringify([...s])); }
+function forgetDevice(id){ const s=new Set(rememberedIds()); s.delete(id); localStorage.setItem('connectedDevices', JSON.stringify([...s])); }
+
+async function connect(){
+  try{
+    log('sys','запрос устройства…');
+    // Фильтр по рекламируемым именам и сервисам. ВАЖНО: DOWAY рекламируется как «FW920»
+    // (а не «Doway» — то его GATT-имя), поэтому без FW920 второй диктофон не находился.
+    const gattDev = await navigator.bluetooth.requestDevice({
+      filters: [
+        { namePrefix:'FW920' },   // DOWAY в эфире
+        { namePrefix:'Doway' },
+        { namePrefix:'AIREC' },
+        { namePrefix:'Plaud' },   // Plaud Note Pro
+        { namePrefix:'PLAUD' },
+        { services:[DOWAY.svc] },
+        { services:[AIREC.svc] },
+        { services:[PLAUD.svc] }
+      ],
+      // стандартные сервисы нужны, чтобы читать паспорт Plaud (Device Info, Battery)
+      optionalServices: [DOWAY.svc, AIREC.svc, PLAUD.svc, 'device_information', 'battery_service']
+    });
+    await establish(gattDev);
+  }catch(e){
+    log('err','ошибка: '+e.message);
+    if(e.name!=='NotFoundError')              // NotFoundError = пользователь закрыл окно выбора
+      alert('Ошибка подключения: '+e.message);
+  }
+}
+
+// Установить соединение с уже выбранным/известным устройством (общий путь для
+// ручного выбора и авто-переподключения).
+async function establish(gattDev){
+  const exist = devices.find(d=>d.bt.id===gattDev.id);
+  if(exist){ log('sys','это устройство уже подключено — переключаюсь'); switchTo(exist); return; }
+
+  log('sys','подключение: '+(gattDev.name||'без имени'));
+  const server = await gattDev.gatt.connect();
+  log('sys','GATT подключён, определяю тип…');
+
+  let drv=null, svc=null;
+  for(const d of DRIVERS){
+    try{ svc = await server.getPrimaryService(d.svc); drv=d; break; }catch(e){}
+  }
+  if(!drv){ gattDev.gatt.disconnect(); throw new Error('устройство не опознано: ни DOWAY, ни AIREC сервис не найден'); }
+  log('sys','опознано как '+drv.label);
+
+  const dev = new Device(gattDev, drv, svc);
+  dev.files = [];
+  gattDev.addEventListener('gattserverdisconnected', ()=>onDeviceGone(dev));
+  await dev.open();
+
+  await drv.handshake(dev);
+  if(drv.syncClock){ try{ await drv.syncClock(dev); }catch(e){ log('sys','часы: '+e.message); } }  // как в родном приложении
+  dev.infoData = await drv.info(dev);
+  if(drv.prepare) await drv.prepare(dev);   // подготовка перед списком (AIREC)
+
+  devices.push(dev);
+  rememberDevice(gattDev.id);               // запомнить для авто-переподключения после F5
+  switchTo(dev);                            // делаем активным и рисуем панели
+  await refreshList();                      // наполняет dev.files
+  await readSettings(dev);                  // читаем текущие настройки (усиление, переключатели)
+  // читаем статус записи ПОСЛЕДНИМ (канал свободен) — чтобы после переподключения
+  // сразу понять, идёт ли запись, и показать нужные кнопки
+  if(dev.drv.rec && dev.drv.rec.statusCmd){ try{ await recStatus(true); }catch(e){} }
+}
+
+// Авто-переподключение к ранее подключённым устройствам при загрузке страницы.
+// navigator.bluetooth.getDevices() отдаёт устройства с уже выданным разрешением —
+// к ним можно подключиться без окна выбора (нужен Chrome/Edge с поддержкой getDevices).
+async function reconnectKnown(){
+  if(!navigator.bluetooth || !navigator.bluetooth.getDevices) return;
+  const ids = rememberedIds();
+  if(!ids.length) return;
+  let known=[];
+  try{ known = await navigator.bluetooth.getDevices(); }catch(e){ return; }
+  const targets = known.filter(g=>ids.includes(g.id));
+  if(!targets.length) return;
+  log('sys','авто-переподключение: устройств '+targets.length+'…');
+  for(const g of targets){
+    try{ await establish(g); }
+    catch(e){ log('sys','не удалось переподключить '+(g.name||g.id)+': '+e.message); }
+  }
+}
+
+// показать/спрятать карточки устройства
+function showDeviceCards(show){
+  const d=show?'block':'none';
+  $('#infoCard').style.display=d; $('#filesCard').style.display=d;
+  // settings/rec решают сами (renderSettings/renderRec ставят display по наличию у драйвера)
+  if(!show){ $('#settingsCard').style.display='none'; $('#recCard').style.display='none'; }
+  if(show) $('#logCard').style.display='none';   // в режиме устройства журнал скрыт
+}
+
+// открыть вкладку «Журнал»: панели устройства прячем, показываем журнал
+function showLog(){
+  logView=true;
+  $('#infoCard').style.display='none'; $('#filesCard').style.display='none';
+  $('#settingsCard').style.display='none'; $('#recCard').style.display='none';
+  $('#logCard').style.display='block';
+  renderTabs();
+}
+
+// перерисовать полосу вкладок: устройства + вкладка «Журнал»
+function renderTabs(){
+  const bar=$('#deviceTabs'); bar.innerHTML='';
+  devices.forEach(dev=>{
+    const t=document.createElement('button');
+    t.className='dtab '+dev.drv.id+((!logView && dev===device)?' active':'');
+    const name=(dev.bt.name||'устройство')+' · '+dev.drv.label;
+    const lab=document.createElement('span'); lab.textContent=name; t.appendChild(lab);
+    const x=document.createElement('span'); x.className='x'; x.textContent='×'; x.title='Отключить';
+    x.onclick=e=>{ e.stopPropagation(); closeDevice(dev); };
+    t.appendChild(x);
+    t.onclick=()=>switchTo(dev);
+    bar.appendChild(t);
+  });
+  // вкладка журнала — всегда
+  const lt=document.createElement('button');
+  lt.className='dtab logtab'+(logView?' active':'');
+  lt.textContent='📋 Журнал';
+  lt.onclick=showLog;
+  bar.appendChild(lt);
+}
+
+// сделать устройство активным и отрисовать его панели
+function switchTo(dev){
+  stopStatusPolling();
+  stopLive();                  // эфир привязан к устройству — гасим при переключении
+  logView=false;               // выходим из режима журнала
+  device=dev||null;
+  if(!device){ showLog(); return; }
+  $('#devPill').textContent=device.drv.label; $('#devPill').className='pill '+device.drv.id;
+  renderInfo(device.infoData||{});
+  renderSettings(device.drv);
+  if(device.settingsState) applySettingsState(device.drv, device.settingsState);  // текущие значения из кэша
+  renderRec(device.drv);
+  showDeviceCards(true);
+  renderFiles();               // список из device.files (без перезапроса)
+  renderTabs();
+  startStatusPolling();        // авто-опрос статуса записи
+}
+
+// отключить и убрать устройство
+function closeDevice(dev){
+  forgetDevice(dev.bt.id);     // явное отключение (×) — больше НЕ переподключаемся автоматически
+  try{ if(dev.bt && dev.bt.gatt.connected) dev.bt.gatt.disconnect(); }catch(e){}
+  removeDevice(dev);           // событие отключения тоже вызовет removeDevice, но он идемпотентен
+}
+function onDeviceGone(dev){
+  log('sys','устройство отключилось: '+(dev.bt.name||'устройство'));
+  removeDevice(dev);
+}
+function removeDevice(dev){
+  const i=devices.indexOf(dev);
+  if(i<0) return;              // уже убрано
+  devices.splice(i,1);
+  if(liveMon && liveMon.dev===dev) stopLive();   // гасим эфир отключаемого устройства
+  if(device===dev){ device=null; stopStatusPolling(); }
+  if(devices.length) switchTo(devices[Math.min(i, devices.length-1)]);
+  else { device=null; showLog(); }   // устройств не осталось — показываем журнал
+}
+
+function renderInfo(info){
+  info = info || {};
+  const el=$('#devInfo'); el.innerHTML='';
+  for(const [k,v] of Object.entries(info)){
+    if(k.startsWith('__')) continue;   // служебные поля (например __mem) не как текст
+    el.insertAdjacentHTML('beforeend', `<b>${k}</b><span>${v}</span>`);
+  }
+  renderMemBar(info.__mem);
+}
+// полоса памяти: занято/всего/свободно + процент
+function renderMemBar(mem){
+  const box=$('#memBar'); if(!box) return;
+  if(!mem || !mem.total){ box.innerHTML=''; return; }
+  const used=Math.max(0, mem.total-mem.free);
+  const pct=Math.min(100, Math.round(used/mem.total*100));
+  const col = pct>90?'var(--err)' : pct>75?'var(--warn)' : 'var(--accent)';
+  box.innerHTML =
+    `<div class="muted" style="font-size:12px;margin-bottom:5px">Память</div>`+
+    `<div class="membar"><i style="width:${pct}%;background:${col}"></i></div>`+
+    `<div class="row" style="justify-content:space-between;font-size:11px;margin-top:5px">`+
+      `<span class="muted">всего ${fmtMem(mem.total)}</span>`+
+      `<span>занято ${fmtMem(used)} · ${pct}%</span>`+
+      `<span class="muted">свободно ${fmtMem(mem.free)}</span>`+
+    `</div>`;
+}
+
+// Управление записью — единый механизм для обоих устройств по дескриптору drv.rec:
+//   AIREC:  старт 0x03→имя, пауза/продолжение — один переключатель 0x10, стоп 0x04+имя+размер.
+//   DOWAY:  старт 0x06→имя, пауза 0x08 / продолжение 0x09 (разные), стоп 0x07+имя+размер.
+let pauseBtnEl=null, startBtnEl=null, stopBtnEl=null, recPaused=false, recActive=false;
+function updatePauseLabel(){ if(pauseBtnEl) pauseBtnEl.textContent = recPaused ? '▶ Продолжить' : '⏸ Пауза'; }
+// Старт и Пауза/Стоп взаимоисключаемы: простой → только «Старт»;
+// идёт запись → «Пауза/Продолжить» + «Стоп» (+ «Эфир» у AIREC).
+function updateRecButtons(){
+  if(startBtnEl) startBtnEl.style.display = recActive ? 'none' : '';
+  if(pauseBtnEl) pauseBtnEl.style.display = recActive ? '' : 'none';
+  if(stopBtnEl)  stopBtnEl.style.display  = recActive ? '' : 'none';
+  if(liveBtnEl)  liveBtnEl.style.display  = recActive ? '' : 'none';
+  updatePauseLabel();
+}
+// имя нового файла из ответа старта: AIREC payload[0..13], DOWAY payload[1..14] (0-й байт — статус)
+function parseRecName(drv, payload){
+  const off = (drv.id==='doway') ? 1 : 0;
+  const n = dec.decode(payload.slice(off, off+14)).replace(/\0+$/,'');
+  return n || null;
+}
+function renderRec(drv){
+  const card=$('#recCard'), R=drv.rec;
+  if(!R){ card.style.display='none'; return; }
+  const box=$('#recBtns'); box.innerHTML='';
+  pauseBtnEl=startBtnEl=stopBtnEl=liveBtnEl=null; recPaused=false; recActive=false;
+  const add=(label,kind,cls)=>{ const b=document.createElement('button'); b.className=cls||'sec'; b.textContent=label; b.onclick=()=>recCmd(kind); box.appendChild(b); return b; };
+  startBtnEl=add('● Старт','start');
+  pauseBtnEl=add('⏸ Пауза','pause');
+  stopBtnEl=add('■ Стоп','stop','danger');
+  if(R.live){   // живое прослушивание (AIREC): звук идёт на 0x0003 во время записи
+    liveBtnEl=document.createElement('button'); liveBtnEl.className='sec';
+    liveBtnEl.title='Слушать звук в реальном времени, пока идёт запись';
+    liveBtnEl.onclick=toggleLive; box.appendChild(liveBtnEl); updateLiveBtn();
+  }
+  updateRecButtons();   // показать нужный набор; для AIREC статус уточнит опрос 0x0f
+  card.style.display='block';
+}
+async function recCmd(kind){
+  const dev=device; if(!dev || !dev.drv.rec) return;
+  const R=dev.drv.rec;
+  try{
+    if(kind==='start'){
+      dev.recPrevNames = new Set((dev.files||[]).map(f=>f.name));
+      dev.recName = null;
+      try{
+        const resp = await dev.request(dev.drv.frame(R.start), R.startResp, 3000);   // старт + возврат имени
+        dev.recName = parseRecName(dev.drv, resp.payload);
+        log('sys','запись начата'+(dev.recName?': '+dev.recName:' (имя определим при остановке)'));
+      }catch(e){ log('sys','запись: старт послан, имя определим при остановке'); }
+      recActive=true; recPaused=false; updateRecButtons();   // теперь показываем Пауза/Стоп
+      if(R.statusCmd) setTimeout(()=>recStatus(), 400);
+      return;
+    }
+    if(kind==='pause'){
+      const cmd = recPaused ? R.resumeCmd : R.pauseCmd;   // AIREC: одна и та же 0x10; DOWAY: 0x08/0x09
+      await dev.writeCmd(dev.drv.frame(cmd));
+      recPaused=!recPaused; updateRecButtons();
+      log('sys',`запись: ${recPaused?'пауза':'продолжение'} (0x${cmd.toString(16)})`);
+      if(R.statusCmd) setTimeout(()=>recStatus(), 400);
+      return;
+    }
+    if(kind==='stop'){
+      await dev.writeCmd(dev.drv.frame(R.stop));
+      recActive=false; recPaused=false; stopLive(); updateRecButtons();   // назад к «Старт»
+      log('sys','запись: стоп (0x'+R.stop.toString(16)+')');
+      if(R.statusCmd) setTimeout(()=>recStatus(), 400);
+      await waitForNewFile(dev);   // умное ожидание появления записи
+    }
+  }catch(e){ log('err','запись: '+e.message); }
+}
+
+// После стопа перечитываем список, пока в нём не появится новая запись
+// (имя из ответа 0x03, иначе — любой файл, которого не было до старта). Тихий опрос:
+// не мигаем «загрузка…» на каждой итерации, обновляем таблицу только по факту.
+async function waitForNewFile(dev){
+  const target = dev.recName || null;
+  const prev   = dev.recPrevNames || null;
+  if(!target && !prev){ if(device===dev) await refreshList(); return; }   // нечего сравнивать
+  for(let i=0; i<10; i++){
+    await sleep(i===0 ? 500 : 700);
+    if(device!==dev) return;                       // вкладку переключили — прекращаем
+    let files;
+    try{ files = await dev.drv.list(dev); }catch(e){ continue; }
+    dev.files = files;
+    const names = new Set(files.map(f=>f.name));
+    const appeared = target ? names.has(target) : files.some(f=>!prev.has(f.name));
+    if(appeared){
+      if(device===dev) renderFiles();
+      log('sys','список обновлён: новая запись на месте'+(target?` (${target})`:''));
+      dev.recName=null;
+      return;
+    }
+  }
+  if(device===dev) renderFiles();                  // покажем что есть
+  log('sys','новая запись не появилась за отведённое время — обновите список вручную');
+}
+// Опрос статуса записи (у AIREC — 0x0f). Статус пишем в журнал ТОЛЬКО при изменении.
+let lastRecState='';
+async function recStatus(quiet=false){
+  const cmd = device && device.drv.rec && device.drv.rec.statusCmd;
+  if(!cmd) return;                             // у устройства нет команды статуса (DOWAY)
+  if(device._dl || device._await) return;      // не мешаем идущему обмену/скачиванию
+  const dev=device;
+  try{
+    const f = await dev.request(dev.drv.frame(cmd), cmd, 2000, quiet);
+    if(device!==dev) return;                   // вкладку переключили
+    // 0x0f: '02' = простой; '00'+имя = идёт запись файла
+    const p=f.payload;
+    let txt, active=recActive;
+    if(p[0]===0x02){ txt='простой (не пишет)'; active=false; }
+    else if(p[0]===0x00){ txt='ИДЁТ ЗАПИСЬ — '+dec.decode(p.slice(1)).replace(/\0+$/,''); active=true; }
+    else txt='0x0f '+hex(p);          // неизвестно — состояние кнопок не трогаем
+    if(active!==recActive){           // синхронизируем кнопки с реальным состоянием устройства
+      recActive=active; if(!active){ recPaused=false; stopLive(); } updateRecButtons();
+    }
+    if(txt!==lastRecState){ lastRecState=txt; log('sys','статус записи: '+txt); }
+  }catch(e){ if(!quiet) log('sys','статус недоступен: '+e.message); }
+}
+
+// Авто-опрос статуса, пока активно устройство с командой статуса (каждые 4 с, тихо).
+let statusTimer=null;
+function startStatusPolling(){
+  stopStatusPolling();
+  if(!device || !device.drv.rec || !device.drv.rec.statusCmd) return;
+  recStatus(true);
+  statusTimer=setInterval(()=>{
+    if(device && device.drv.rec && device.drv.rec.statusCmd) recStatus(true); else stopStatusPolling();
+  }, 4000);
+}
+function stopStatusPolling(){ if(statusTimer){ clearInterval(statusTimer); statusTimer=null; } }
+
+function renderSettings(drv){
+  const card=$('#settingsCard'), body=$('#settingsBody');
+  if(!drv.settings){ card.style.display='none'; return; }
+  body.innerHTML='';
+  for(const s of drv.settings){
+    const row=document.createElement('div'); row.className='set-row';
+    row.innerHTML=`<div><div class="set-lbl">${s.label}</div><div class="set-note">${s.note||''}</div></div>`;
+    const ctl=document.createElement('div'); ctl.className='set-ctl'; ctl.dataset.cmd=s.cmd;
+    const send=async (val,btn)=>{
+      try{
+        await device.writeCmd(drv.frame(s.cmd, s.pre ? [...s.pre, val] : [val]));
+        [...ctl.children].forEach(b=>b.classList.remove('on')); btn.classList.add('on');
+        if(device && device.settingsState && s.byte!=null) device.settingsState[s.byte]=val;  // держим кэш в согласии
+        log('sys',`настройка 0x${s.cmd.toString(16)} = ${val}`);
+      }catch(e){ log('err','настройка: '+e.message); }
+    };
+    const mk=(val,text)=>{ const b=document.createElement('button'); b.className='sec'; b.textContent=text; b.dataset.val=val; b.onclick=()=>send(val,b); return b; };
+    if(s.type==='toggle'){
+      ctl.append(mk(0x00,'Выкл'), mk(0x01,'Вкл'));
+    } else if(s.type==='range'){
+      for(let v=s.min; v<=s.max; v++) ctl.appendChild(mk(v, String(v)));
+    } else if(s.type==='select'){
+      for(const o of s.options) ctl.appendChild(mk(o.val, o.label));
+    }
+    row.appendChild(ctl); body.appendChild(row);
+  }
+  // Форматирование — только для драйверов, где команда подтверждена (DOWAY).
+  if(drv.format){
+    const row=document.createElement('div'); row.className='set-row';
+    row.innerHTML=`<div><div class="set-lbl">Форматировать устройство</div><div class="set-note">Стирает ВСЕ записи безвозвратно</div></div>`;
+    const ctl=document.createElement('div'); ctl.className='set-ctl';
+    const b=document.createElement('button'); b.className='danger'; b.textContent='Форматировать';
+    b.onclick=formatDevice; ctl.appendChild(b);
+    row.appendChild(ctl); body.appendChild(row);
+  }
+  card.style.display='block';
+}
+
+// Форматирование устройства (DOWAY, 0x10). Двойное подтверждение — операция необратима.
+async function formatDevice(){
+  const dev=device; if(!dev || !dev.drv.format) return;
+  if(!confirm('ФОРМАТИРОВАНИЕ сотрёт ВСЕ записи на устройстве безвозвратно.\n\nПродолжить?')) return;
+  if(!confirm('Точно форматировать? Восстановить записи будет нельзя.')) return;
+  try{
+    log('sys','форматирование устройства… (несколько секунд)');
+    await dev.drv.format(dev);
+    dev.files=[];
+    log('sys','устройство отформатировано');
+    if(device===dev){ renderFiles(); await refreshList(); }
+    alert('Устройство отформатировано.');
+  }catch(e){ log('err','форматирование: '+e.message); alert('Не удалось отформатировать: '+e.message); }
+}
+
+// Подсветить кнопки настроек по прочитанному состоянию (payload ответа 0x26)
+function applySettingsState(drv, payload){
+  if(!drv.settings || !payload) return;
+  for(const s of drv.settings){
+    if(s.byte==null) continue;
+    const cur=payload[s.byte]; if(cur==null) continue;
+    const ctl=document.querySelector(`#settingsBody .set-ctl[data-cmd="${s.cmd}"]`);
+    if(!ctl) continue;
+    [...ctl.children].forEach(b=> b.classList.toggle('on', Number(b.dataset.val)===cur));
+  }
+}
+
+// Прочитать текущие настройки устройства (0x26 → 9 байт) при подключении
+async function readSettings(dev){
+  if(!dev.drv.settings || !dev.drv.settingsCmd) return;
+  try{
+    const f=await dev.request(dev.drv.frame(dev.drv.settingsCmd), dev.drv.settingsCmd, 2500, true);
+    dev.settingsState=Array.from(f.payload);
+    if(device===dev) applySettingsState(dev.drv, dev.settingsState);
+    log('sys','настройки прочитаны с устройства');
+  }catch(e){ log('sys','настройки: чтение не удалось ('+e.message+')'); }
+}
+
+let sortState = { key:'date', dir:-1 };   // по умолчанию: дата, новые сверху
+                                          // (список хранится в device.files — свой у каждой вкладки)
+
+// ключ сортировки для записи: число (больше = «выше» при dir=1)
+function sortValue(f){
+  if(sortState.key==='size') return f.size==null ? -Infinity : f.size;
+  if(sortState.key==='dur'){ const d=estDurationSec(f); return d==null ? -Infinity : d; }
+  // date: имя-таймстамп фикс. ширины → числовое сравнение = хронологическое
+  return /^\d{14}$/.test(f.name) ? Number(f.name) : -Infinity;
+}
+function applySort(files){
+  return files.slice().sort((a,b)=>{
+    const d = sortValue(a) - sortValue(b);
+    return (d!==0 ? d : (a.name<b.name?-1:a.name>b.name?1:0)) * sortState.dir;
+  });
+}
+function updateSortArrows(){
+  document.querySelectorAll('#filesTbl th.sortable').forEach(th=>{
+    const arr=th.querySelector('.sarr');
+    arr.textContent = th.dataset.sort===sortState.key ? (sortState.dir<0?'▼':'▲') : '';
+  });
+}
+function setSort(key){
+  if(sortState.key===key) sortState.dir=-sortState.dir;   // тот же столбец — меняем направление
+  else sortState={key, dir:-1};                           // новый столбец — по убыванию
+  renderFiles();
+}
+
+async function refreshList(){
+  if(!device) return;
+  const tb = $('#filesTbl tbody');
+  if(!device.drv.list){   // драйвер без списка (Plaud — протокол зашифрован)
+    $('#fileCount').textContent='';
+    tb.innerHTML='<tr><td colspan="5" class="muted">Работа с записями недоступна: BLE-протокол устройства зашифрован (RSA + шифр). Читается только паспорт устройства.</td></tr>';
+    return;
+  }
+  const dev=device;   // фиксируем: пользователь может переключить вкладку во время запроса
+  tb.innerHTML='<tr><td colspan="5" class="muted">загрузка…</td></tr>';
+  try{
+    dev.files = await dev.drv.list(dev);
+    log('sys',`получено записей: ${dev.files.length}`);
+    if(device===dev) renderFiles();          // рисуем только если вкладка ещё активна
+  }catch(e){
+    log('err','список: '+e.message);
+    dev.files=[];
+    if(device===dev) tb.innerHTML=`<tr><td colspan="5" class="log-err">${e.message}</td></tr>`;
+  }
+}
+
+// отрисовка таблицы из device.files с учётом текущей сортировки (без обращения к устройству)
+function renderFiles(){
+  const tb = $('#filesTbl tbody');
+  updateSortArrows();
+  const src = (device && device.files) || [];
+  $('#fileCount').textContent = src.length ? `· ${src.length} шт.` : '';
+  if(!src.length){ tb.innerHTML='<tr><td colspan="5" class="muted">записей нет</td></tr>'; return; }
+  const files = applySort(src);
+  tb.innerHTML='';
+  for(const f of files){
+    const tr=document.createElement('tr');
+    tr.innerHTML = `<td>${prettyName(f.name)}<div class="muted" style="font-size:11px">${f.name}</div></td>
+      <td>${fmtSizeFor(device.drv, f.size)}</td>
+      <td>${fmtDuration(estDurationSec(f))}</td>
+      <td class="muted">${device.drv.fmtLabel} <span style="font-size:11px">(.${device.drv.audioExt})</span></td>
+      <td></td>`;
+    const cell=tr.lastElementChild;
+    cell.style.whiteSpace='nowrap';
+    const play=document.createElement('button'); play.className='sec'; play.textContent='▶'; play.title='Прослушать';
+    play.onclick=()=>playFile(f);
+    const btn=document.createElement('button'); btn.className='sec'; btn.textContent='Скачать';
+    btn.style.marginLeft='8px'; btn.onclick=()=>downloadFile(f);
+    const del=document.createElement('button'); del.className='danger'; del.textContent='Удалить';
+    del.style.marginLeft='8px'; del.onclick=()=>deleteFile(f);
+    cell.appendChild(play); cell.appendChild(btn); cell.appendChild(del);
+    tb.appendChild(tr);
+  }
+}
+
+async function playFile(f){
+  const dev=device; if(!dev) return;   // операция привязана к устройству, а не к активной вкладке
+  const prog=$('#dlProgress'); prog.style.display='block';
+  dlStatus('Загрузка для прослушивания '+prettyName(f.name));
+  $('#dlBytes').textContent='0 Б'; $('#dlBar').style.width='0%';
+  const player=$('#player'); player.style.display='none';
+  try{
+    const estMax = estBytes(dev.drv, f.size);
+    const blob = await dev.drv.download(dev, f, (bytes, declared)=>{
+      const max = declared || estMax;   // declared — точный размер из ответа устройства
+      $('#dlBytes').textContent = bytes.toLocaleString('ru')+' Б'+(declared?' / '+declared.toLocaleString('ru'):'');
+      if(max) $('#dlBar').style.width=Math.min(100,bytes/max*100)+'%';
+    });
+    if(blob.size===0){ dlStatus('0 байт — записать не удалось'); return; }
+    const head=new Uint8Array(await blob.slice(0,4).arrayBuffer());
+    const fmt=sniffFormat(head, dev.drv.audioExt, dev.drv.fmtLabel);
+    if(fmt.ext==='opus.raw'){
+      // Фирменный формат AIREC: декодируем Opus в PCM прямо в браузере (WebCodecs) → WAV.
+      dlStatus('Декодирование Opus… ('+blob.size.toLocaleString('ru')+' Б)');
+      try{
+        const {pcm,rate,seconds}=await decodeAirecToPcm(blob);
+        const wav=pcmToWav(pcm,rate);
+        if(player.src) URL.revokeObjectURL(player.src);
+        player.src=URL.createObjectURL(wav);
+        player.style.display='block';
+        dlStatus('▶ '+prettyName(f.name)+' · Opus 16 кГц → WAV · '+seconds.toFixed(1)+'с');
+        player.play().catch(()=>{ dlStatus('Готово (нажмите ▶ в плеере). '+prettyName(f.name)); });
+      }catch(e){
+        log('err','декод AIREC: '+e.message);
+        dlStatus('Не удалось декодировать в браузере: '+e.message+'. Файл получен ('+blob.size.toLocaleString('ru')+' Б) — сохраните кнопкой «Скачать».');
+      }
+      return;
+    }
+    const mime = fmt.ext==='mp3'?'audio/mpeg':fmt.ext==='wav'?'audio/wav':fmt.ext==='ogg'?'audio/ogg':'application/octet-stream';
+    if(player.src) URL.revokeObjectURL(player.src);
+    player.src=URL.createObjectURL(new Blob([blob],{type:mime}));
+    player.style.display='block';
+    dlStatus('▶ '+prettyName(f.name)+' · '+fmt.label);
+    player.play().catch(()=>{ dlStatus('Браузер не смог проиграть формат '+fmt.label+'. Файл получен.'); });
+  }catch(e){ log('err','прослушивание: '+e.message); dlStatus('Ошибка: '+e.message); }
+}
+
+async function deleteFile(f){
+  const dev=device; if(!dev) return;
+  if(!confirm(`Удалить запись «${prettyName(f.name)}» с устройства?\n\nЭто действие необратимо.`)) return;
+  try{
+    log('sys','запрос удаления '+f.name);
+    await dev.drv.delete(dev, f);
+    log('sys','удалено: '+f.name);
+    if(device===dev) await refreshList();
+  }catch(e){
+    log('err','удаление: '+e.message);
+    alert('Не удалось удалить: '+e.message);
+  }
+}
+
+async function downloadFile(f){
+  const dev=device; if(!dev) return;
+  const prog=$('#dlProgress'); prog.style.display='block';
+  dlStatus('Скачивание '+f.name);
+  $('#dlBytes').textContent='0 Б'; $('#dlBar').style.width='0%';
+  try{
+    const estMax = estBytes(dev.drv, f.size);   // оценка до получения точного размера
+    const blob = await dev.drv.download(dev, f, (bytes, declared)=>{
+      const max = declared || estMax;           // declared — точный размер из ответа устройства
+      $('#dlBytes').textContent = bytes.toLocaleString('ru')+' Б'+(declared?' / '+declared.toLocaleString('ru'):'');
+      if(max) $('#dlBar').style.width = Math.min(100, bytes/max*100)+'%';
+    });
+    if(blob.size===0){
+      log('err','0 байт — команда старта скачивания у AIREC не определена (файл ставится в очередь в родном приложении). См. README.');
+      dlStatus('0 байт — старт скачивания у AIREC пока не поддержан (нужен перехват тапа «скачать»).');
+      return;
+    }
+    // определяем реальный формат по первым байтам скачанного
+    const head = new Uint8Array(await blob.slice(0,16).arrayBuffer());
+    const fmt = sniffFormat(head, dev.drv.audioExt, dev.drv.fmtLabel);
+    log('sys',`сигнатура: ${hex(head.slice(0,4))} → ${fmt.label}`);
+    const url=URL.createObjectURL(blob);
+    const a=document.createElement('a');
+    a.href=url; a.download=f.name+'.'+fmt.ext;
+    a.click(); URL.revokeObjectURL(url);
+    log('sys',`сохранён ${f.name}.${fmt.ext} (${blob.size} Б)`);
+    dlStatus(`Готово: ${f.name}.${fmt.ext} · ${fmt.label} · ${blob.size.toLocaleString('ru')} Б`);
+  }catch(e){
+    log('err','скачивание: '+e.message);
+    dlStatus('Ошибка: '+e.message);
+  }
+}
+
+// ============ Привязка кнопок ============
+$('#btnAddTop').onclick=connect;          // кнопка «＋ Устройство» в шапке — подключить устройство
+$('#btnList').onclick=refreshList;
+// клик по заголовкам столбцов — сортировка (дата / размер / длительность)
+document.querySelectorAll('#filesTbl th.sortable').forEach(th=>{
+  th.onclick=()=>setSort(th.dataset.sort);
+});
+$('#btnClearLog').onclick=()=>$('#log').innerHTML='';
+$('#btnCopyLog').onclick=async ()=>{
+  const text=[...$('#log').children].map(d=>d.textContent).join('\n');
+  try{ await navigator.clipboard.writeText(text); const b=$('#btnCopyLog'); const o=b.textContent; b.textContent='✓'; setTimeout(()=>b.textContent=o,1000); }
+  catch(e){ alert('Копирование недоступно: '+e.message); }
+};
+checkEnv();
+renderTabs();   // показать вкладку «Журнал» сразу (устройств ещё нет)
+log('sys','готов. Нажмите «＋ Устройство» в шапке.');
+reconnectKnown();   // после перезагрузки — тихо переподключиться к ранее подключённым устройствам
+</script>
+</body>
+</html>

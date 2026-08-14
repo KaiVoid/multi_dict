@@ -1,0 +1,21 @@
+# ОС и редакторы
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
+*~
+
+# отладочное и тяжёлое — в репозиторий не попадает
+*.log
+*.pcap
+*.pcapng
+*.zip
+*.bin
+*.opus
+*.wav
+*.mp3
+bugreport*
+btsnoop*
+dump*
+scratchpad/
