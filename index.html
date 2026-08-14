@@ -519,7 +519,7 @@ const AIREC = {
   // Сопоставление байтов выведено из перехватов: byte0=усиление и byte8=загрузочная —
   // подтверждены; байты 1/2/6 (переключатели) — предварительно.
   settings: [
-    {cmd:0x2a, byte:0, label:'Усиление микрофона', type:'range', min:1, max:5, note:''},
+    {cmd:0x2a, byte:7, label:'Усиление микрофона', type:'range', min:1, max:5, note:''},
     {cmd:0x19, byte:1, label:'Шумоподавление',     type:'toggle', note:''},
     {cmd:0x18, byte:2, label:'Светодиод',           type:'toggle', note:''},
     {cmd:0x24, byte:6, label:'Поддержка USB',       type:'toggle', note:''},
