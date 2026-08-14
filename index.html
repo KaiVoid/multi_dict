@@ -865,11 +865,15 @@ async function establish(gattDev){
   devices.push(dev);
   rememberDevice(gattDev.id);               // запомнить для авто-переподключения после F5
   switchTo(dev);                            // делаем активным и рисуем панели
+  stopStatusPolling();                      // начальные чтения идут по очереди, без параллельного
+                                            // опроса 0x0f — иначе он затирает ответ на 0x26 (AIREC),
+                                            // и текущие значения настроек не подсвечиваются
   await refreshList();                      // наполняет dev.files
   await readSettings(dev);                  // читаем текущие настройки (усиление, переключатели)
   // читаем статус записи ПОСЛЕДНИМ (канал свободен) — чтобы после переподключения
   // сразу понять, идёт ли запись, и показать нужные кнопки
   if(dev.drv.rec && dev.drv.rec.statusCmd){ try{ await recStatus(true); }catch(e){} }
+  startStatusPolling();                     // теперь включаем регулярный авто-опрос статуса
 }
 
 // Авто-переподключение к ранее подключённым устройствам при загрузке страницы.
@@ -1007,6 +1011,7 @@ function updateRecButtons(){
   if(stopBtnEl)  stopBtnEl.style.display  = recActive ? '' : 'none';
   if(liveBtnEl)  liveBtnEl.style.display  = recActive ? '' : 'none';
   updatePauseLabel();
+  updateLiveBtn();   // текст кнопки эфира — по реальному liveMon (иначе после стоп/старт остаётся «Остановить»)
 }
 // имя нового файла из ответа старта: AIREC payload[0..13], DOWAY payload[1..14] (0-й байт — статус)
 function parseRecName(drv, payload){
