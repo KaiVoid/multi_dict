@@ -528,6 +528,13 @@ const AIREC = {
     {cmd:0x22, byte:4, label:'Сегментация записей', type:'select', pre:[0x00],
      note:'Автоматически резать длинную запись на части', options:[
       {val:0x1e,label:'30 мин'},{val:0x2d,label:'45 мин'},{val:0x3c,label:'60 мин'}]},
+    // 0x23 (+спутник 0x39) подтверждён порядком действий: остановка на холостом ходу.
+    // Значение — минуты; читается из байта 5 ответа 0x26. Спутник 0x39 несёт то же значение (4 байта BE).
+    {cmd:0x23, byte:5, label:'Остановка на холостом ходу', type:'select',
+     also:{cmd:0x39, wrap:v=>[0,0,0,v]},
+     note:'Автовыключение при простое', options:[
+      {val:0x1e,label:'30 мин'},{val:0x3c,label:'1 час'},{val:0x78,label:'2 часа'},
+      {val:0xb4,label:'3 часа'},{val:0xf0,label:'4 часа'}]},
   ],
   settingsCmd: 0x26,   // чтение текущих настроек (ответ 0x26, 9 байт)
   // Управление записью: старт 0x03→имя; пауза/продолжение — ОДИН переключатель 0x10;
@@ -1141,6 +1148,7 @@ function renderSettings(drv){
     const send=async (val,btn)=>{
       try{
         await device.writeCmd(drv.frame(s.cmd, s.pre ? [...s.pre, val] : [val]));
+        if(s.also) await device.writeCmd(drv.frame(s.also.cmd, s.also.wrap(val)));   // команда-спутник (напр. 0x39 для 0x23)
         [...ctl.children].forEach(b=>b.classList.remove('on')); btn.classList.add('on');
         if(device && device.settingsState && s.byte!=null) device.settingsState[s.byte]=val;  // держим кэш в согласии
         log('sys',`настройка 0x${s.cmd.toString(16)} = ${val}`);
